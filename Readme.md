@@ -499,6 +499,8 @@ Open the Killercoda-exposed port `9090`, go to **Status → Targets**, and
 confirm a `custom-pod-metrics` job with `demo-app`'s pod `UP`. Stop the
 port-forward (`Ctrl+C`) once confirmed.
 
+<img width="2551" height="1318" alt="image" src="https://github.com/user-attachments/assets/dc560577-721b-4895-a462-07c8baf4f686" />
+
 ---
 
 ## 4. Install KEDA via Helm
@@ -648,6 +650,8 @@ Events:
   Normal  KEDAScalersStarted  94s    keda-operator   Started scalers watch
   Normal  ScaledObjectReady   94s    keda-operator   ScaledObject is ready for scaling
 ```
+
+<img width="2551" height="1318" alt="image" src="https://github.com/user-attachments/assets/ee19cfd1-97d5-4e72-ae59-50b59e4e6cfe" />
 
 `Type: Ready / Status: True` means KEDA accepted the config and set up the
 Prometheus scaler. `Type: Active / Status: False` just means there's no
