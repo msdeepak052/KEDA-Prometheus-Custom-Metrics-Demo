@@ -85,9 +85,9 @@
     <rect x="705" y="680" width="240" height="22" rx="11" fill="#EDE9FE"/>
     <text x="825" y="695" font-size="11" fill="#5B21B6" text-anchor="middle">Prometheus scaler* (in keda-operator) ↻</text>
     <text x="120" y="706" font-size="15" font-weight="700" fill="#0f172a">The Prometheus scaler queries Prometheus</text>
-    <text x="120" y="730" font-size="13" fill="#334155">Every pollingInterval (15s here), it runs the PromQL query and</text>
-    <text x="120" y="750" font-size="13" fill="#334155">caches the result. This is the only step in the whole chain where</text>
-    <text x="120" y="770" font-size="13" fill="#334155" font-style="italic">anything actually talks to Prometheus.</text>
+    <text x="120" y="730" font-size="13" fill="#334155">It runs the PromQL query to keep the ScaledObject's status fresh.</text>
+    <text x="120" y="750" font-size="13" fill="#334155">(pollingInterval doesn't pace this at minReplicaCount ≥ 1 — KEDA's own</text>
+    <text x="120" y="770" font-size="13" fill="#334155" font-style="italic">webhook warns you, see README.) The only step that talks to Prometheus.</text>
   </g>
 
   <!-- Row 5 : y=800 -->

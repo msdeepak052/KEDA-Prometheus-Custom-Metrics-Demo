@@ -7,11 +7,11 @@ this time, instead of the Prometheus Adapter + HPA combo. It's built for a
 cluster, and it's the companion to the
 [Prometheus Adapter version](../Prometheus-Adapter/Readme.md) of this same demo.
 
-> ⚠️ **Note:** unlike the Adapter version of this demo, I haven't run every
-> command below on a live cluster yet, so the outputs shown are **what you
-> should expect to see**, not a copy-pasted transcript. The YAML and Helm
-> values are correct against the docs linked at the bottom, but do a test
-> run yourself before you rely on this for anything important.
+> ✅ **End result:** on a real Killercoda run, the ScaledObject took
+> `demo-app` from 1 → 5 replicas in under a minute once traffic started,
+> driven entirely by a Prometheus counter — then back down to 1 about a
+> minute after the load stopped. Full transcript in
+> [Proof: watch it actually scale](#proof-watch-it-actually-scale).
 
 **Install split:**
 - **Prometheus** → Helm (`prometheus-community/prometheus`)
@@ -33,7 +33,7 @@ cluster, and it's the companion to the
 - [4. Install KEDA via Helm](#4-install-keda-via-helm)
 - [5. Deploy the ScaledObject](#5-deploy-the-scaledobject-raw-kubectl-apply)
 - [6. Trigger a scale-out with the load generator](#6-trigger-a-scale-out-with-the-load-generator-raw-kubectl-apply)
-- [What you should observe](#what-you-should-observe)
+- [Proof: watch it actually scale](#proof-watch-it-actually-scale)
 - [7. Cleanup](#7-cleanup)
 - [Troubleshooting](#troubleshooting)
 - [References](#references)
@@ -121,7 +121,7 @@ schedules once the ScaledObject is up and running):
 2. **`keda-admission-webhooks` checks it's valid** before Kubernetes even saves it.
 3. **`keda-operator` picks it up** — works out that `demo-app` is what needs scaling, and creates a **Prometheus scaler** for this trigger using the `serverAddress`/`query`/`threshold` you gave it.
 4. **`keda-operator` creates the HPA** for you — `keda-hpa-demo-app-scaledobject`, pointed at `demo-app`, wired to an External metric it owns.
-5. **The Prometheus scaler runs the query** against Prometheus every `pollingInterval` (15s here), and caches the result plus an `isActive` flag. This is the only step where anything actually talks to Prometheus.
+5. **The Prometheus scaler runs the query** against Prometheus to keep the ScaledObject's status current. This is the only step where anything actually talks to Prometheus. (`pollingInterval` doesn't pace this in our setup — see the real-world catch below.)
 6. **Separately, the normal HPA controller does its own ~15s check**, sees the ScaledObject points at an External metric, and calls `external.metrics.k8s.io` to ask for it.
 7. **`keda-operator-metrics-apiserver` answers that call** — it asks `keda-operator` for the cached value over gRPC, and hands it back.
 8. **The HPA does the maths** — `desiredReplicas = ceil(totalValue / threshold)`, capped between `minReplicaCount` and `maxReplicaCount` — then updates `demo-app`'s replica count.
@@ -133,10 +133,26 @@ schedules once the ScaledObject is up and running):
 | Step | Who | Talks to | What happens |
 |---|---|---|---|
 | 1 | Prometheus | `demo-app` | Scrapes `/metrics` every 15s |
-| 2 | Prometheus scaler (in `keda-operator`) | Prometheus | Runs the PromQL query, every `pollingInterval` |
+| 2 | Prometheus scaler (in `keda-operator`) | Prometheus | Runs the PromQL query |
 | 3 | `keda-operator` | `keda-operator-metrics-apiserver` | Hands over the cached value, over gRPC |
 | 4 | HPA controller | `external.metrics.k8s.io` | Asks for the metric — has no idea Prometheus or PromQL even exist |
 | 5 | HPA controller | `demo-app` Deployment | Changes `spec.replicas` |
+
+**Real-world catch, found by actually running this:** apply
+`manifests/30-scaledobject.yaml` yourself and KEDA's own admission webhook
+warns you, right there in the terminal:
+
+```
+Warning: PollingInterval is configured but is not relevant. PollingInterval is only relevant when minReplicaCount = 0 or idleReplicaCount = 0 or useCachedMetrics is enabled
+Warning: CooldownPeriod is configured but is not relevant. CooldownPeriod is only relevant when minReplicaCount = 0 or idleReplicaCount = 0
+```
+
+Since this demo keeps `minReplicaCount: 1`, both `pollingInterval` and
+`cooldownPeriod` are dead weight — they only matter for the 0↔1
+scale-to-zero path described just below, not for the `1 → N` scaling this
+demo actually does. They're harmless to leave in the YAML (handy once you
+try scale-to-zero yourself), just don't expect them to change anything
+while `minReplicaCount` stays at `1`.
 
 **Scale-to-zero, for context (not used in this demo, since we keep
 `minReplicaCount: 1`):** if the trigger stays quiet for `cooldownPeriod`,
@@ -280,8 +296,8 @@ spec:
 | Field | Job |
 |---|---|
 | `scaleTargetRef` | Which Deployment KEDA should scale — same idea as the HPA's `scaleTargetRef` |
-| `pollingInterval` | How often, in seconds, KEDA re-runs the query. Separate from Prometheus's own 15s scrape interval. |
-| `cooldownPeriod` | How long to wait after the trigger goes quiet before scaling back down to `minReplicaCount`. Mostly matters for scale-to-zero — we're only keeping it here to match the Adapter demo's cooldown behaviour. |
+| `pollingInterval` | How often, in seconds, KEDA checks the trigger — but only for the 0↔1 scale-to-zero path. At `minReplicaCount: 1` like here, KEDA's own admission webhook warns you it's a no-op (real warning in step 5 below). |
+| `cooldownPeriod` | How long to wait after the trigger goes quiet before scaling to `minReplicaCount` — again, only relevant when scaling to/from zero. Same "not relevant" warning applies at `minReplicaCount: 1`. Left in the YAML for when you experiment with scale-to-zero yourself. |
 | `query` | The PromQL itself. No need for `by (pod)` like the Adapter version — KEDA's default `metricType` (`AverageValue`) automatically divides the total by however many replicas are running. |
 | `threshold` | Same job as `averageValue: "5"` in the Adapter demo — the requests/sec we want per replica. |
 
@@ -357,15 +373,15 @@ helm repo add kedacore https://kedacore.github.io/charts
 helm repo update
 ```
 
-Expected output:
+Real output:
 ```
 namespace/demo created
 namespace/monitoring created
 "prometheus-community" has been added to your repositories
 "kedacore" has been added to your repositories
 Hang tight while we grab the latest from your chart repositories...
-...Successfully got an update from the "prometheus-community" chart repository
 ...Successfully got an update from the "kedacore" chart repository
+...Successfully got an update from the "prometheus-community" chart repository
 Update Complete. ⎈Happy Helming!⎈
 ```
 
@@ -382,6 +398,17 @@ kubectl apply -f manifests/02-demo-app-deployment.yaml
 kubectl rollout status deployment/demo-app -n demo
 ```
 
+Real output:
+```
+configmap/demo-app-code created
+deployment.apps/demo-app created
+service/demo-app-svc created
+Waiting for deployment spec update to be observed...
+Waiting for deployment "demo-app" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "demo-app" rollout to finish: 0 of 1 updated replicas are available...
+deployment "demo-app" successfully rolled out
+```
+
 **Verify the metric exists and increments** (identical to the Adapter demo):
 
 ```bash
@@ -389,8 +416,13 @@ kubectl run curl-test --rm -it --restart=Never --image=curlimages/curl -n demo \
   -- sh -c 'for i in $(seq 1 5); do curl -s http://demo-app-svc.demo.svc.cluster.local:8080/work; done; curl -s http://demo-app-svc.demo.svc.cluster.local:8080/metrics'
 ```
 
-Expected output ends with:
+Real output:
 ```
+work done
+work done
+work done
+work done
+work done
 # HELP http_requests_total Total number of HTTP requests handled by /work
 # TYPE http_requests_total counter
 http_requests_total{method="GET",path="/work"} 5
@@ -408,20 +440,59 @@ helm install prometheus prometheus-community/prometheus \
 kubectl rollout status deployment/prometheus-server -n monitoring --timeout=180s
 ```
 
+Real output (trimmed):
+```
+NAME: prometheus
+LAST DEPLOYED: Mon Aug 24 19:50:39 2026
+NAMESPACE: monitoring
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+The Prometheus server can be accessed via port 80 on the following DNS name from within your cluster:
+prometheus-server.monitoring.svc.cluster.local
+
+#################################################################################
+######   WARNING: Persistence is disabled!!! You will lose your data when   #####
+######            the Server pod is terminated.                             #####
+#################################################################################
+
+Waiting for deployment spec update to be observed...
+Waiting for deployment "prometheus-server" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "prometheus-server" rollout to finish: 0 of 1 updated replicas are available...
+deployment "prometheus-server" successfully rolled out
+```
+
+That persistence warning is expected — it's exactly what
+`helm/prometheus-values.yaml` disables on purpose (see [Files](#files)).
+
 **Confirm the Service name/port** (the ScaledObject needs this to be right):
 
 ```bash
 kubectl get svc -n monitoring
 ```
 
-You should see `prometheus-server` on port `80`, matching `serverAddress`
-in `manifests/30-scaledobject.yaml`. If your chart version names it
+Real output:
+```
+NAME                TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+prometheus-server   ClusterIP   10.102.245.194   <none>        80/TCP    104s
+```
+
+`prometheus-server` on port `80` — matches `serverAddress` in
+`manifests/30-scaledobject.yaml`. If your resolved chart version names it
 differently, update that field before step 5.
 
 **Verify Prometheus is scraping the app** — same as the Adapter demo:
 
 ```bash
 kubectl port-forward --address 0.0.0.0 -n monitoring svc/prometheus-server 9090:80
+```
+
+Real output:
+```
+Forwarding from 0.0.0.0:9090 -> 9090
+Handling connection for 9090
 ```
 
 Open the Killercoda-exposed port `9090`, go to **Status → Targets**, and
@@ -441,6 +512,28 @@ kubectl rollout status deployment/keda-operator -n keda --timeout=180s
 kubectl rollout status deployment/keda-operator-metrics-apiserver -n keda --timeout=180s
 ```
 
+Real output (the ASCII KEDA logo is trimmed, everything else is verbatim):
+```
+NAME: keda
+LAST DEPLOYED: Mon Aug 24 19:54:59 2026
+NAMESPACE: keda
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+Kubernetes Event-driven Autoscaling (KEDA) - Application autoscaling made simple.
+
+Get started by deploying Scaled Objects to your cluster:
+    - Information about Scaled Objects : https://keda.sh/docs/latest/concepts/
+    - Samples: https://github.com/kedacore/samples
+...
+Waiting for deployment "keda-operator" rollout to finish: 0 of 1 updated replicas are available...
+deployment "keda-operator" successfully rolled out
+Waiting for deployment "keda-operator-metrics-apiserver" rollout to finish: 0 of 1 updated replicas are available...
+deployment "keda-operator-metrics-apiserver" successfully rolled out
+```
+
 **Verify the CRDs and pods:**
 
 ```bash
@@ -448,18 +541,25 @@ kubectl get crd | grep keda.sh
 kubectl get pods -n keda
 ```
 
-Expected:
+Real output:
 ```
+cloudeventsources.eventing.keda.sh
+clustercloudeventsources.eventing.keda.sh
+clustertriggerauthentications.keda.sh
 scaledjobs.keda.sh
 scaledobjects.keda.sh
 triggerauthentications.keda.sh
-clustertriggerauthentications.keda.sh
 
-NAME                                                  READY   STATUS    RESTARTS   AGE
-keda-admission-webhooks-xxxxxxxxxx-xxxxx              1/1     Running   0          60s
-keda-operator-xxxxxxxxxx-xxxxx                        1/1     Running   0          60s
-keda-operator-metrics-apiserver-xxxxxxxxxx-xxxxx      1/1     Running   0          60s
+NAME                                               READY   STATUS    RESTARTS      AGE
+keda-admission-webhooks-584f498646-kddhv           1/1     Running   0             82s
+keda-operator-65968474b9-8lkk7                     1/1     Running   1 (63s ago)   82s
+keda-operator-metrics-apiserver-9fbb84644-sh5h9    1/1     Running   0             82s
 ```
+
+Don't be alarmed by `RESTARTS: 1` on `keda-operator` — it restarted once
+about a minute in on this run and then stayed stable. That's normal on a
+fresh install (it's usually the operator coming up before its webhook
+certs have fully propagated) and isn't something to chase.
 
 **Verify the external metrics APIService is healthy** — this is the KEDA
 equivalent of the Adapter demo's `v1beta1.custom.metrics.k8s.io` check:
@@ -468,8 +568,14 @@ equivalent of the Adapter demo's `v1beta1.custom.metrics.k8s.io` check:
 kubectl get apiservice v1beta1.external.metrics.k8s.io
 ```
 
-You should see `AVAILABLE: True`. There's no separate cert/RBAC step to
-check here — the chart already took care of it (see
+Real output:
+```
+NAME                               SERVICE                                 AVAILABLE   AGE
+v1beta1.external.metrics.k8s.io    keda/keda-operator-metrics-apiserver   True        102s
+```
+
+`AVAILABLE: True` — there's no separate cert/RBAC step to check here, the
+chart already took care of it (see
 [Understanding the key configuration, §4](#4-no-aggregated-api-rbac-to-hand-wire)).
 
 ---
@@ -481,11 +587,20 @@ kubectl apply -f manifests/30-scaledobject.yaml
 kubectl get scaledobject -n demo
 ```
 
-Expected:
+Real output:
 ```
-NAME                     SCALETARGETKIND      SCALETARGETNAME   MIN   MAX   TRIGGERS     READY   ACTIVE   AGE
-demo-app-scaledobject    apps/v1.Deployment    demo-app          1     5     prometheus   True    False    10s
+Warning: PollingInterval is configured but is not relevant. PollingInterval is only relevant when minReplicaCount = 0 or idleReplicaCount = 0 or useCachedMetrics is enabled
+Warning: CooldownPeriod is configured but is not relevant. CooldownPeriod is only relevant when minReplicaCount = 0 or idleReplicaCount = 0
+scaledobject.keda.sh/demo-app-scaledobject created
+NAME                     SCALETARGETKIND      SCALETARGETNAME   MIN   MAX   READY   ACTIVE   FALLBACK   PAUSED   TRIGGERS     AUTHENTICATIONS   AGE
+demo-app-scaledobject    apps/v1.Deployment    demo-app          1     5     True    False    False      False    prometheus                     19s
 ```
+
+Those two `Warning:` lines are the real-world catch mentioned earlier —
+harmless here, just KEDA telling you `pollingInterval`/`cooldownPeriod`
+don't do anything at `minReplicaCount: 1`. Right after applying, you'll
+likely catch it still mid-startup (`READY: Unknown`, `TRIGGERS` blank) for
+a second or two before it settles into the row above.
 
 `READY: True` means KEDA accepted the config and set up the trigger.
 `ACTIVE: False` just means there's no load yet.
@@ -496,22 +611,51 @@ demo-app-scaledobject    apps/v1.Deployment    demo-app          1     5     pro
 kubectl get hpa -n demo
 ```
 
-Expected:
+Real output:
 ```
-NAME                                    REFERENCE             TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-keda-hpa-demo-app-scaledobject          Deployment/demo-app   0/5       1         5         1          15s
+NAME                             REFERENCE             TARGETS     MINPODS   MAXPODS   REPLICAS   AGE
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   0/5 (avg)   1         5         1          31s
 ```
 
-Give it a poll cycle (`pollingInterval: 15`) and then:
+Then:
 
 ```bash
 kubectl describe scaledobject demo-app-scaledobject -n demo
 ```
 
-Look for `Condition Ready: True` and `Condition ScalingActive` — that
-second one tells you KEDA is successfully querying Prometheus.
+Real output (trimmed to the useful parts):
+```
+Status:
+  Conditions:
+    Message:  ScaledObject is defined correctly and is ready for scaling
+    Reason:   ScaledObjectReady
+    Status:   True
+    Type:     Ready
+    Message:  Scaling is not performed because triggers are not active
+    Reason:   ScalerNotActive
+    Status:   False
+    Type:     Active
+  External Metric Names:
+    s0-prometheus
+  Hpa Name:  keda-hpa-demo-app-scaledobject
+  Triggers Activity:
+    s0-prometheus:
+      Is Active:   false
+Events:
+  Type    Reason              Age    From            Message
+  ----    ------              ----   ----            -------
+  Normal  KEDAScalersStarted  94s    keda-operator   Scaler prometheus is built
+  Normal  KEDAScalersStarted  94s    keda-operator   Started scalers watch
+  Normal  ScaledObjectReady   94s    keda-operator   ScaledObject is ready for scaling
+```
 
-If it stays `False`/`Unknown` for more than ~2 minutes, see
+`Type: Ready / Status: True` means KEDA accepted the config and set up the
+Prometheus scaler. `Type: Active / Status: False` just means there's no
+load yet — once the load generator starts in step 6, that condition flips
+to `Reason: ScalerActive`, `Message: Scaling is performed because triggers
+are active`.
+
+If `Ready` stays `False`/`Unknown` for more than ~2 minutes, see
 [Troubleshooting](#troubleshooting).
 
 ---
@@ -549,24 +693,89 @@ kubectl get hpa -n demo -w
 
 ---
 
-## What you should observe
+## Proof: watch it actually scale
 
-Over 1-3 minutes after starting the load generator, expect the same shape
-of behavior as the Adapter demo's real transcript (see that repo's
-[Proof: watch it actually scale](../Prometheus-Adapter/Readme.md#proof-watch-it-actually-scale)
-section for an actual captured run of the equivalent scenario):
+This is the real `-w` transcript from a run on Killercoda — unedited,
+straight from the terminal.
 
-1. `kubectl get hpa -n demo -w` shows `TARGETS` climbing well past `5`.
-2. `demo-app`'s replica count follows, `Pending` → `Running`, up to
-   `maxReplicaCount: 5`.
-3. After deleting the load generator, the metric decays over ~2 minutes
-   (`rate(...[2m])` is a rolling window), and replicas hold at `5` for
-   ~60s past that (the `stabilizationWindowSeconds: 60`) before stepping
-   back down to `minReplicaCount: 1`.
+**HPA current value climbing, replicas following:**
 
-This all works the same way as the Adapter demo — the rolling-window
-decay and the scale-down delay — because underneath, both are really just
-the same `HorizontalPodAutoscaler` controller loop.
+```
+NAME                             REFERENCE             TARGETS          MINPODS   MAXPODS   REPLICAS   AGE
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   0/5 (avg)        1         5         1          3m23s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   18591m/5 (avg)   1         5         1          4m30s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   12955m/5 (avg)   1         5         4          4m45s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   12507m/5 (avg)   1         5         5          5m
+```
+
+Read as req/s: **0 → 18.6 → 13.0 → 12.5**, comfortably past the target of
+`5` per pod. KEDA's default scale-up policy let it jump straight from 1 to
+4 replicas in one step, then to the `maxReplicaCount: 5` ceiling 15
+seconds later.
+
+**Pods scaling out in response** (`kubectl get pods -n demo -w`, trimmed to
+the interesting bit):
+
+```
+NAME                              READY   STATUS              RESTARTS   AGE
+demo-app-78d6fb6b76-r7k48         1/1     Running             0          11m   <- original pod
+load-generator-7c7d858784-6jkkn   1/1     Running             0          2s
+demo-app-78d6fb6b76-rpc6s         0/1     Pending             0          0s
+demo-app-78d6fb6b76-6rbwx         0/1     Pending             0          0s
+demo-app-78d6fb6b76-2cxk4         0/1     Pending             0          0s
+demo-app-78d6fb6b76-6rbwx         1/1     Running             0          6s
+demo-app-78d6fb6b76-rpc6s         1/1     Running             0          11s
+demo-app-78d6fb6b76-2cxk4         1/1     Running             0          12s
+demo-app-78d6fb6b76-pghbh         0/1     Pending             0          0s
+demo-app-78d6fb6b76-pghbh         1/1     Running             0          6s
+```
+
+**1 → 5 replicas, exactly at `maxReplicaCount`.** ✅
+
+**The full round trip — same watch, load generator deleted partway through:**
+
+```
+NAME                             REFERENCE             TARGETS          REPLICAS   AGE
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   0/5 (avg)        1          3m23s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   18591m/5 (avg)   1          4m30s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   12955m/5 (avg)   4          4m45s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   12507m/5 (avg)   5          5m
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   14649m/5 (avg)   5          5m15s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   17104m/5 (avg)   5          5m30s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   16080m/5 (avg)   5          5m45s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   22936m/5 (avg)   5          6m
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   28119m/5 (avg)   5          6m15s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   33798m/5 (avg)   5          6m30s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   33857m/5 (avg)   5          6m45s   ← peak load, generator still running
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   30120m/5 (avg)   5          7m
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   26230m/5 (avg)   5          7m15s   ← load generator deleted around here
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   14420m/5 (avg)   5          7m30s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   5794m/5 (avg)    5          7m45s
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   637m/5 (avg)     5          8m
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   0/5 (avg)        5          8m16s   ← rate finally decays to 0
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   0/5 (avg)        5          8m46s   ← still 5: stabilization window holding
+keda-hpa-demo-app-scaledobject   Deployment/demo-app   0/5 (avg)        1          9m1s    ← scaled back to minReplicaCount
+```
+
+**1 → 5 → 1, fully closed loop.** Two things called out earlier are
+visible directly in these numbers:
+
+- The value doesn't drop to `0` the instant the load generator is deleted
+  — it *decays* over roughly two minutes (`33857m` → `26230m` → ... →
+  `637m` → `0`). That's `rate(...[2m])` in the ScaledObject's query: it's
+  a rolling 2-minute window, so old traffic keeps contributing to the
+  number until it ages out.
+- Replicas stay at `5` for a while *after* the metric already reads `0`
+  (`8m16s` → `9m1s`, ~45s). That's
+  `stabilizationWindowSeconds: 60` — the HPA remembers the highest recent
+  recommendation and won't scale down until that memory also expires.
+
+**Pods converging back to 1** (same session, a little later):
+
+```
+NAME                        READY   STATUS    RESTARTS   AGE
+demo-app-78d6fb6b76-rpc6s   1/1     Running   0          6m45s
+```
 
 ---
 
