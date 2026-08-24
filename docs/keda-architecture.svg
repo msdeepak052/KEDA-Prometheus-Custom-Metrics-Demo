@@ -21,6 +21,8 @@
 
     <rect x="40" y="106" width="14" height="14" rx="3" fill="#E6522C"/>
     <text x="60" y="117">prometheus-server</text>
+
+    <text x="250" y="117" font-style="italic" fill="#64748b">* Prometheus scaler = in-process module inside keda-operator, not a separate Pod</text>
   </g>
 
   <!-- connecting spine -->
@@ -59,8 +61,8 @@
     <rect x="845" y="416" width="100" height="22" rx="11" fill="#EDE9FE"/>
     <text x="895" y="431" font-size="11" fill="#5B21B6" text-anchor="middle">keda-operator</text>
     <text x="120" y="442" font-size="15" font-weight="700" fill="#0f172a">keda-operator reconciles the CR</text>
-    <text x="120" y="466" font-size="13" fill="#334155">Its controller-runtime loop resolves demo-app as the scale</text>
-    <text x="120" y="486" font-size="13" fill="#334155">target and initializes the Prometheus scaler from the trigger.</text>
+    <text x="120" y="466" font-size="13" fill="#334155">Its controller-runtime loop resolves demo-app as the scale target</text>
+    <text x="120" y="486" font-size="13" fill="#334155">and instantiates a Prometheus scaler* for this ScaledObject's trigger.</text>
   </g>
 
   <!-- Row 3 : y=536 -->
@@ -80,11 +82,12 @@
     <circle cx="55" cy="724" r="20" fill="#7C3AED"/>
     <text x="55" y="729" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
     <rect x="100" y="668" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
-    <rect x="825" y="680" width="120" height="22" rx="11" fill="#EDE9FE"/>
-    <text x="885" y="695" font-size="11" fill="#5B21B6" text-anchor="middle">keda-operator ↻</text>
-    <text x="120" y="706" font-size="15" font-weight="700" fill="#0f172a">keda-operator polls Prometheus</text>
-    <text x="120" y="730" font-size="13" fill="#334155">Every pollingInterval (15s here): runs the PromQL query, caches</text>
-    <text x="120" y="750" font-size="13" fill="#334155">the latest value and an isActive flag. Repeats forever.</text>
+    <rect x="705" y="680" width="240" height="22" rx="11" fill="#EDE9FE"/>
+    <text x="825" y="695" font-size="11" fill="#5B21B6" text-anchor="middle">Prometheus scaler* (in keda-operator) ↻</text>
+    <text x="120" y="706" font-size="15" font-weight="700" fill="#0f172a">The Prometheus scaler queries Prometheus</text>
+    <text x="120" y="730" font-size="13" fill="#334155">Every pollingInterval (15s here) it runs the PromQL query directly</text>
+    <text x="120" y="750" font-size="13" fill="#334155">against Prometheus and caches the value + an isActive flag. This is the</text>
+    <text x="120" y="770" font-size="13" fill="#334155" font-style="italic">only step where anything talks to Prometheus for scaling decisions.</text>
   </g>
 
   <!-- Row 5 : y=800 -->

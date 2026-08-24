@@ -23,6 +23,7 @@ of this demo.
 
 - [Architecture](#architecture)
 - [KEDA Operator Architecture (chronological)](#keda-operator-architecture-chronological)
+  - [Failure modes: what if a component dies?](#failure-modes-what-if-a-component-dies)
 - [Files](#files)
 - [Why KEDA instead of the Prometheus Adapter?](#why-keda-instead-of-the-prometheus-adapter)
 - [Understanding the key configuration](#understanding-the-key-configuration)
@@ -89,12 +90,19 @@ scaling. Here's what each one owns:
 
 | Component | Runs as | Job |
 |---|---|---|
-| `keda-operator` | Deployment, `keda` ns | Watches `ScaledObject`/`ScaledJob` CRs, resolves scale targets, runs every scaler (Prometheus, Kafka, ...), creates/owns the HPA for each ScaledObject, and directly patches replicas for the 0↔1 scale-to-zero transition (an HPA can't act with zero pods). |
+| `keda-operator` | Deployment, `keda` ns | Watches `ScaledObject`/`ScaledJob` CRs, resolves scale targets, hosts every scaler instance, creates/owns the HPA for each ScaledObject, and directly patches replicas for the 0↔1 scale-to-zero transition (an HPA can't act with zero pods). |
+| ↳ **Prometheus scaler** | *In-process module inside `keda-operator`* — **not** a separate Pod | The piece that actually speaks PromQL. One instance is created per `type: prometheus` trigger; it holds `serverAddress`/`query`/`threshold` and is the **only** component that ever talks to Prometheus for a scaling decision. |
 | `keda-operator-metrics-apiserver` | Deployment, `keda` ns | Registers and serves the `external.metrics.k8s.io` aggregated API. Doesn't compute values itself — forwards each request to `keda-operator` over an internal **gRPC** call (port `9666`) and returns whatever it gets back. |
 | `keda-admission-webhooks` | Deployment, `keda` ns | Validates `ScaledObject`/`ScaledJob` CRs at `kubectl apply` time (e.g. `scaleTargetRef` exists, `minReplicaCount ≤ maxReplicaCount`) so broken config fails fast instead of silently never scaling. |
 | `ScaledObject` / `ScaledJob` CRDs | Custom Resource | What you author (`manifests/30-scaledobject.yaml`). Declares the target workload, replica bounds, and one or more triggers (here: `type: prometheus`). |
 | `TriggerAuthentication` / `ClusterTriggerAuthentication` CRDs | Custom Resource | Where scaler credentials live (API keys, DB connection strings, etc). Not used in this demo — our Prometheus endpoint is unauthenticated. |
 | HPA controller | Inside `kube-controller-manager`, untouched | The actual thing that changes `spec.replicas` for `1 → N` scaling. KEDA never replaces it — it just feeds it a metric through the external metrics API, the same way the Prometheus Adapter demo fed it through the custom metrics API. |
+
+> **The one distinction that matters most:** the **Prometheus scaler**
+> (inside `keda-operator`) talks to *Prometheus*. The **HPA** talks to
+> *Kubernetes' external metrics API*. `keda-operator-metrics-apiserver` is
+> the bridge between the two — and each of those three links can fail
+> independently (see [Failure modes](#failure-modes-what-if-a-component-dies) below).
 
 **Chronological flow for this demo** (steps ⑤–⑩ repeat forever on their
 respective intervals once the ScaledObject is live):
@@ -103,14 +111,24 @@ respective intervals once the ScaledObject is live):
 
 1. **User applies the ScaledObject** — `kubectl apply -f manifests/30-scaledobject.yaml`.
 2. **`keda-admission-webhooks` validates it** at admission time.
-3. **`keda-operator` reconciles the CR** — resolves `demo-app` as the scale target and initializes the Prometheus scaler from `serverAddress`/`query`/`threshold`.
+3. **`keda-operator` reconciles the CR** — resolves `demo-app` as the scale target and instantiates a **Prometheus scaler** for this trigger, from `serverAddress`/`query`/`threshold`.
 4. **`keda-operator` creates the HPA** — `keda-hpa-demo-app-scaledobject`, `scaleTargetRef -> demo-app`, referencing an External metric it owns.
-5. **`keda-operator` starts polling Prometheus** every `pollingInterval` (15s here), caching the latest PromQL result and an `isActive` flag.
+5. **The Prometheus scaler queries Prometheus directly** every `pollingInterval` (15s here), caching the latest PromQL result and an `isActive` flag. This is the only network hop that reaches Prometheus.
 6. **The stock HPA controller syncs** on its own ~15s cycle, sees the External metric reference, and calls `external.metrics.k8s.io`.
-7. **`keda-operator-metrics-apiserver` answers** by asking `keda-operator` for the cached value over the internal gRPC call.
+7. **`keda-operator-metrics-apiserver` answers** by asking `keda-operator` (and therefore the Prometheus scaler's cached value) for the cached value over the internal gRPC call.
 8. **The HPA controller does the math** — `desiredReplicas = ceil(totalValue / threshold)`, clamped to `[minReplicaCount, maxReplicaCount]` — and PATCHes `demo-app`'s `spec.replicas`.
 9. **The Deployment/ReplicaSet controller reconciles Pods** to match — nothing KEDA-specific, this is core Kubernetes.
 10. **The loop closes through Prometheus** — new/removed pods change the scrape targets, so the next PromQL evaluation (back at step ⑤) reflects the new spread of load.
+
+**Who talks to whom** (the condensed version of the above):
+
+| Step | Who | Talks to | What happens |
+|---|---|---|---|
+| 1 | Prometheus | `demo-app` | Scrapes `/metrics` every 15s |
+| 2 | Prometheus scaler (in `keda-operator`) | Prometheus | Executes the PromQL query, every `pollingInterval` |
+| 3 | `keda-operator` | `keda-operator-metrics-apiserver` | Makes the cached value available over internal gRPC |
+| 4 | HPA controller | `external.metrics.k8s.io` | Asks for the metric — has no idea Prometheus or PromQL exist |
+| 5 | HPA controller | `demo-app` Deployment | PATCHes `spec.replicas` |
 
 **Scale-to-zero, for context (not used in this demo — `minReplicaCount: 1`):**
 when the trigger is inactive for `cooldownPeriod`, `keda-operator` patches
@@ -120,6 +138,47 @@ moment the trigger goes active again, `keda-operator` patches `1` back in,
 then hands control back to the HPA for all `1 → N` scaling. This is the
 capability the Adapter+HPA demo structurally cannot offer (see the
 [comparison table](#why-keda-instead-of-the-prometheus-adapter) below).
+
+### Failure modes: what if a component dies?
+
+The chain above has three independent links, so "Prometheus is healthy"
+does **not** imply "KEDA-driven scaling is working" — and vice versa.
+Worth deliberately breaking each one to build the right mental model:
+
+**If `keda-operator-metrics-apiserver` goes down:**
+```
+Prometheus                ✅        demo-app still gets scraped fine
+Prometheus scaler         ✅ (ish)  keda-operator can still reach Prometheus
+keda-operator-metrics-apiserver  ❌  external.metrics.k8s.io has no backend
+HPA controller             ✅        but its query to the External metric fails
+```
+The HPA's path to the metric is severed even though Prometheus and the
+scaler are both fine. `kubectl describe hpa -n demo` will show events like
+`unable to fetch metrics from external metrics API` / `failed to get
+external metric`, and `kubectl get apiservice v1beta1.external.metrics.k8s.io`
+will show `AVAILABLE: False`. Fix: `kubectl rollout status
+deployment/keda-operator-metrics-apiserver -n keda` and check its logs.
+
+**If Prometheus goes down instead:**
+```
+Prometheus                 ❌  nothing to scrape from
+Prometheus scaler          ❌  PromQL query fails against serverAddress
+keda-operator-metrics-apiserver  ✅  still up, but has nothing fresh to serve
+HPA controller              ✅  still calling the API on schedule
+```
+`kubectl describe scaledobject demo-app-scaledobject -n demo` will show
+the `ScalingActive`/`Ready` conditions flip to `False`, and
+`kubectl logs -n keda deploy/keda-operator` will show the Prometheus
+scaler's HTTP calls failing (connection refused / timeout). The HPA keeps
+running but can't get a fresh value — behavior depends on how long the
+metric stays stale (KEDA falls back to the last cached value briefly, then
+the ScaledObject condition goes unhealthy).
+
+The reusable takeaway: **the Prometheus scaler → Prometheus link and the
+`keda-operator-metrics-apiserver` → HPA link are two separate failure
+domains.** Debugging "scaling isn't happening" always starts with figuring
+out which one broke — `kubectl describe scaledobject` narrows it to the
+first link, `kubectl describe hpa` narrows it to the second.
 
 ## Files
 
