@@ -41,33 +41,7 @@ of this demo.
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    LG["load-generator<br/>(busybox Deployment)<br/><i>kubectl apply</i>"]
-
-    subgraph demo["namespace: demo"]
-        APP["demo-app<br/>(Deployment + Service)<br/>exposes /metrics<br/>http_requests_total counter"]
-        SO["ScaledObject<br/><i>kubectl apply</i><br/>PromQL trigger, threshold: 5"]
-        HPA["keda-hpa-demo-app-scaledobject<br/><i>auto-created by KEDA</i>"]
-    end
-
-    subgraph monitoring["namespace: monitoring"]
-        PROM["prometheus-server<br/><i>Helm release</i>"]
-    end
-
-    subgraph kedans["namespace: keda"]
-        OPERATOR["keda-operator<br/><i>Helm release</i><br/>watches ScaledObjects,<br/>polls Prometheus"]
-        METRICS["keda-operator-metrics-apiserver<br/>serves external.metrics.k8s.io"]
-    end
-
-    LG -->|"GET /work"| APP
-    APP -->|"scraped every 15s<br/>prometheus.io/* annotations"| PROM
-    OPERATOR -->|"PromQL poll every 15s:<br/>sum(rate(http_requests_total[2m]))"| PROM
-    OPERATOR -->|"writes desired scale"| HPA
-    METRICS -->|"external.metrics.k8s.io"| HPA
-    SO -.->|"defines trigger"| OPERATOR
-    HPA -->|"scales replicas"| APP
-```
+<img width="1660" height="948" alt="Arch_Keda" src="https://github.com/user-attachments/assets/0a34fc86-252b-4e9f-97a6-175da7f6ad81" />
 
 Same rationale as the Adapter demo for using a *rate*, not the raw counter:
 `http_requests_total` only ever goes up, so scaling on it directly would
