@@ -40,7 +40,8 @@ cluster, and it's the companion to the
 
 ## Architecture
 
-<img width="1660" height="948" alt="Arch_Keda" src="https://github.com/user-attachments/assets/0a34fc86-252b-4e9f-97a6-175da7f6ad81" />
+<img width="1533" height="1016" alt="image" src="https://github.com/user-attachments/assets/fd31eadf-91a1-4259-bc1d-675d23f28741" />
+
 
 ```mermaid
 flowchart TD
