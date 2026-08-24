@@ -1,0 +1,33 @@
+# Replaces both the Prometheus Adapter's rule AND the raw HPA object from
+# the custom-metrics-adapter version of this demo. One CRD, no
+# custom.metrics.k8s.io plumbing: KEDA queries Prometheus itself and creates
+# the underlying HPA (keda-hpa-demo-app-scaledobject) for you.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: demo-app-scaledobject
+  namespace: demo
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-app
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  pollingInterval: 15    # how often KEDA re-runs the query against Prometheus
+  cooldownPeriod: 60     # how long to wait before scaling back to minReplicaCount after the trigger goes inactive
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 60
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://prometheus-server.monitoring.svc.cluster.local
+      # Total request rate across every demo-app pod. metricType defaults to
+      # AverageValue, so KEDA (via the HPA it creates) divides this by the
+      # current replica count for you -- no "by (pod)" needed like the
+      # Adapter version required.
+      query: sum(rate(http_requests_total{namespace="demo"}[2m]))
+      threshold: "5"

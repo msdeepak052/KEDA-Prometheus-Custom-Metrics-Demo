@@ -1,0 +1,66 @@
+# Values for: helm install prometheus prometheus-community/prometheus -n monitoring -f helm/prometheus-values.yaml
+#
+# Trims the chart down to just the server (no Alertmanager / kube-state-metrics
+# / node-exporter / pushgateway -- not needed for this demo) and disables
+# persistence, since a bare Killercoda kubeadm cluster usually has no default
+# StorageClass (a PVC would otherwise sit Pending forever).
+#
+# NOTE: chart versions occasionally rename these subchart keys. If
+# `helm install` rejects one of the `enabled: false` blocks below, run
+# `helm show values prometheus-community/prometheus` to see the current
+# key names for the chart version Helm resolved, and adjust here.
+
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  persistentVolume:
+    enabled: false
+  retention: "1h"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Appended to the chart's built-in scrape_configs (which already include
+# jobs for apiservers/nodes/cadvisor/service-endpoints). This adds one more
+# job, separately named to avoid clashing with the chart's own
+# "kubernetes-pods" job, that scrapes any pod carrying prometheus.io/scrape
+# annotations -- which is how demo-app (manifests/02-demo-app-deployment.yaml)
+# gets discovered. It explicitly sets plain "namespace" and "pod" labels,
+# which is what the ScaledObject's PromQL (manifests/30-scaledobject.yaml)
+# filters on.
+extraScrapeConfigs: |
+  - job_name: 'custom-pod-metrics'
+    kubernetes_sd_configs:
+    - role: pod
+    relabel_configs:
+    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+      action: keep
+      regex: true
+    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+      action: replace
+      target_label: __metrics_path__
+      regex: (.+)
+    - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+      action: replace
+      regex: ([^:]+)(?::\d+)?;(\d+)
+      replacement: $1:$2
+      target_label: __address__
+    - action: labelmap
+      regex: __meta_kubernetes_pod_label_(.+)
+    - source_labels: [__meta_kubernetes_namespace]
+      action: replace
+      target_label: namespace
+    - source_labels: [__meta_kubernetes_pod_name]
+      action: replace
+      target_label: pod

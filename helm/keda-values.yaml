@@ -1,0 +1,34 @@
+# Values for: helm install keda kedacore/keda -n keda --create-namespace -f helm/keda-values.yaml
+#
+# The chart deploys three components -- operator, metrics server (the thing
+# that actually serves external.metrics.k8s.io to the HPA controller), and
+# an admission webhook -- plus all of their own RBAC and the CRDs
+# (ScaledObject, ScaledJob, TriggerAuthentication, ...). Nothing to wire up
+# manually, unlike the Adapter's aggregated-APIService + RBAC steps.
+#
+# Default resource requests/limits (1 CPU / 1Gi per component) are generous
+# for production and wasteful on a Killercoda sandbox that's also running
+# Prometheus and the demo app -- trim them down here.
+
+resources:
+  operator:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  metricServer:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  webhooks:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi

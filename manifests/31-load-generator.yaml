@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: demo
+  labels:
+    app: load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      containers:
+      - name: load-generator
+        image: busybox:1.36
+        # 10 parallel tight loops hitting /work. That's comfortably more
+        # than the 5 req/s-per-pod threshold in the ScaledObject, so it
+        # should trigger scale-out within a couple of minutes.
+        command:
+        - sh
+        - -c
+        - |
+          for i in $(seq 1 10); do
+            (while true; do wget -q -O- http://demo-app-svc.demo.svc.cluster.local:8080/work >/dev/null 2>&1; done) &
+          done
+          wait
+        resources:
+          requests:
+            cpu: 20m
+            memory: 16Mi
+          limits:
+            cpu: 200m
+            memory: 32Mi

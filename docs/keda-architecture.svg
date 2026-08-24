@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1680" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="1000" height="1680" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="40" y="42" font-size="24" font-weight="700" fill="#0f172a">KEDA + Prometheus — Chronological Architecture Flow</text>
+  <text x="40" y="64" font-size="13" fill="#64748b">Applies to this demo's manifests/30-scaledobject.yaml — steps run top to bottom, then loop from ⑩ back to ⑤</text>
+
+  <!-- Legend -->
+  <g font-size="12" fill="#334155">
+    <rect x="40" y="82" width="14" height="14" rx="3" fill="#2563EB"/>
+    <text x="60" y="93">Kubernetes core (unmodified)</text>
+
+    <rect x="250" y="82" width="14" height="14" rx="3" fill="#7C3AED"/>
+    <text x="270" y="93">keda-operator</text>
+
+    <rect x="410" y="82" width="14" height="14" rx="3" fill="#0D9488"/>
+    <text x="430" y="93">keda-admission-webhooks</text>
+
+    <rect x="640" y="82" width="14" height="14" rx="3" fill="#B45309"/>
+    <text x="660" y="93">keda-operator-metrics-apiserver</text>
+
+    <rect x="40" y="106" width="14" height="14" rx="3" fill="#E6522C"/>
+    <text x="60" y="117">prometheus-server</text>
+  </g>
+
+  <!-- connecting spine -->
+  <line x1="55" y1="196" x2="55" y2="1384" stroke="#CBD5E1" stroke-width="3"/>
+
+  <!-- ================= STEP TEMPLATE (10 rows) ================= -->
+  <!-- Row 0 : y=140 -->
+  <g>
+    <circle cx="55" cy="196" r="20" fill="#2563EB"/>
+    <text x="55" y="201" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+    <rect x="100" y="140" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="815" y="152" width="130" height="22" rx="11" fill="#DBEAFE"/>
+    <text x="880" y="167" font-size="11" fill="#1D4ED8" text-anchor="middle">kube-apiserver</text>
+    <text x="120" y="178" font-size="15" font-weight="700" fill="#0f172a">User applies the ScaledObject</text>
+    <text x="120" y="202" font-size="13" fill="#334155">kubectl apply -f 30-scaledobject.yaml — targets demo-app's</text>
+    <text x="120" y="222" font-size="13" fill="#334155">Deployment with a Prometheus trigger (query + threshold).</text>
+  </g>
+
+  <!-- Row 1 : y=272 -->
+  <g>
+    <circle cx="55" cy="328" r="20" fill="#0D9488"/>
+    <text x="55" y="333" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+    <rect x="100" y="272" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="775" y="284" width="170" height="22" rx="11" fill="#CCFBF1"/>
+    <text x="860" y="299" font-size="11" fill="#0F766E" text-anchor="middle">keda-admission-webhooks</text>
+    <text x="120" y="310" font-size="15" font-weight="700" fill="#0f172a">Admission webhook validates it</text>
+    <text x="120" y="334" font-size="13" fill="#334155">Checks scaleTargetRef exists, minReplicaCount ≤ maxReplicaCount,</text>
+    <text x="120" y="354" font-size="13" fill="#334155">and the trigger config is well-formed before it's persisted.</text>
+  </g>
+
+  <!-- Row 2 : y=404 -->
+  <g>
+    <circle cx="55" cy="460" r="20" fill="#7C3AED"/>
+    <text x="55" y="465" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+    <rect x="100" y="404" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="845" y="416" width="100" height="22" rx="11" fill="#EDE9FE"/>
+    <text x="895" y="431" font-size="11" fill="#5B21B6" text-anchor="middle">keda-operator</text>
+    <text x="120" y="442" font-size="15" font-weight="700" fill="#0f172a">keda-operator reconciles the CR</text>
+    <text x="120" y="466" font-size="13" fill="#334155">Its controller-runtime loop resolves demo-app as the scale</text>
+    <text x="120" y="486" font-size="13" fill="#334155">target and initializes the Prometheus scaler from the trigger.</text>
+  </g>
+
+  <!-- Row 3 : y=536 -->
+  <g>
+    <circle cx="55" cy="592" r="20" fill="#7C3AED"/>
+    <text x="55" y="597" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+    <rect x="100" y="536" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="845" y="548" width="100" height="22" rx="11" fill="#EDE9FE"/>
+    <text x="895" y="563" font-size="11" fill="#5B21B6" text-anchor="middle">keda-operator</text>
+    <text x="120" y="574" font-size="15" font-weight="700" fill="#0f172a">keda-operator creates the HPA</text>
+    <text x="120" y="598" font-size="13" fill="#334155">A standard HPA object, keda-hpa-demo-app-scaledobject, with</text>
+    <text x="120" y="618" font-size="13" fill="#334155">scaleTargetRef -&gt; demo-app, referencing an External metric it owns.</text>
+  </g>
+
+  <!-- Row 4 : y=668 -->
+  <g>
+    <circle cx="55" cy="724" r="20" fill="#7C3AED"/>
+    <text x="55" y="729" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+    <rect x="100" y="668" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="825" y="680" width="120" height="22" rx="11" fill="#EDE9FE"/>
+    <text x="885" y="695" font-size="11" fill="#5B21B6" text-anchor="middle">keda-operator ↻</text>
+    <text x="120" y="706" font-size="15" font-weight="700" fill="#0f172a">keda-operator polls Prometheus</text>
+    <text x="120" y="730" font-size="13" fill="#334155">Every pollingInterval (15s here): runs the PromQL query, caches</text>
+    <text x="120" y="750" font-size="13" fill="#334155">the latest value and an isActive flag. Repeats forever.</text>
+  </g>
+
+  <!-- Row 5 : y=800 -->
+  <g>
+    <circle cx="55" cy="856" r="20" fill="#2563EB"/>
+    <text x="55" y="861" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+    <rect x="100" y="800" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="775" y="812" width="170" height="22" rx="11" fill="#DBEAFE"/>
+    <text x="860" y="827" font-size="11" fill="#1D4ED8" text-anchor="middle">kube-controller-manager</text>
+    <text x="120" y="838" font-size="15" font-weight="700" fill="#0f172a">HPA controller syncs (stock Kubernetes)</text>
+    <text x="120" y="862" font-size="13" fill="#334155">Its own ~15s loop sees the HPA's External metric reference</text>
+    <text x="120" y="882" font-size="13" fill="#334155">and calls the external.metrics.k8s.io aggregated API.</text>
+  </g>
+
+  <!-- Row 6 : y=932 -->
+  <g>
+    <circle cx="55" cy="988" r="20" fill="#B45309"/>
+    <text x="55" y="993" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">7</text>
+    <rect x="100" y="932" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="745" y="944" width="200" height="22" rx="11" fill="#FEF3C7"/>
+    <text x="845" y="959" font-size="11" fill="#92400E" text-anchor="middle">keda-operator-metrics-apiserver</text>
+    <text x="120" y="970" font-size="15" font-weight="700" fill="#0f172a">Metrics API server answers the call</text>
+    <text x="120" y="994" font-size="13" fill="#334155">It's the registered handler for external.metrics.k8s.io; internally</text>
+    <text x="120" y="1014" font-size="13" fill="#334155">it asks keda-operator for the cached value over gRPC (port 9666).</text>
+  </g>
+
+  <!-- Row 7 : y=1064 -->
+  <g>
+    <circle cx="55" cy="1120" r="20" fill="#2563EB"/>
+    <text x="55" y="1125" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">8</text>
+    <rect x="100" y="1064" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="775" y="1076" width="170" height="22" rx="11" fill="#DBEAFE"/>
+    <text x="860" y="1091" font-size="11" fill="#1D4ED8" text-anchor="middle">kube-controller-manager</text>
+    <text x="120" y="1102" font-size="15" font-weight="700" fill="#0f172a">HPA controller does the math</text>
+    <text x="120" y="1126" font-size="13" fill="#334155">desiredReplicas = ceil(totalValue / threshold), clamped to</text>
+    <text x="120" y="1146" font-size="13" fill="#334155">[minReplicaCount, maxReplicaCount] — then PATCHes demo-app's spec.replicas.</text>
+  </g>
+
+  <!-- Row 8 : y=1196 -->
+  <g>
+    <circle cx="55" cy="1252" r="20" fill="#2563EB"/>
+    <text x="55" y="1257" font-size="16" font-weight="700" fill="#ffffff" text-anchor="middle">9</text>
+    <rect x="100" y="1196" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="775" y="1208" width="170" height="22" rx="11" fill="#DBEAFE"/>
+    <text x="860" y="1223" font-size="11" fill="#1D4ED8" text-anchor="middle">kube-controller-manager</text>
+    <text x="120" y="1234" font-size="15" font-weight="700" fill="#0f172a">Deployment/ReplicaSet reconciles Pods</text>
+    <text x="120" y="1258" font-size="13" fill="#334155">Creates or terminates demo-app Pods to match the new replica</text>
+    <text x="120" y="1278" font-size="13" fill="#334155">count. Standard, unmodified Kubernetes behavior — nothing KEDA-specific.</text>
+  </g>
+
+  <!-- Row 9 : y=1328 -->
+  <g>
+    <circle cx="55" cy="1384" r="20" fill="#E6522C"/>
+    <text x="55" y="1389" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">10</text>
+    <rect x="100" y="1328" width="860" height="112" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <rect x="835" y="1340" width="110" height="22" rx="11" fill="#FDE4DA"/>
+    <text x="890" y="1355" font-size="11" fill="#9A3412" text-anchor="middle">prometheus-server</text>
+    <text x="120" y="1366" font-size="15" font-weight="700" fill="#0f172a">Loop closes back through Prometheus</text>
+    <text x="120" y="1390" font-size="13" fill="#334155">New/removed Pods change the scrape targets; the next PromQL</text>
+    <text x="120" y="1410" font-size="13" fill="#334155">evaluation (back at step ⑤) reflects the new spread of load.</text>
+  </g>
+
+  <!-- feedback arrow from 10 back to 5 -->
+  <path d="M 960 1384 C 990 1384 990 724 960 724" fill="none" stroke="#94A3B8" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arrow)"/>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#94A3B8"/>
+    </marker>
+  </defs>
+
+  <!-- Scale-to-zero note -->
+  <rect x="100" y="1470" width="860" height="150" rx="10" fill="#F1F5F9" stroke="#94A3B8" stroke-dasharray="5,4"/>
+  <text x="120" y="1498" font-size="14" font-weight="700" fill="#0f172a">Scale-to-zero path (not used in this demo — minReplicaCount: 1 here)</text>
+  <text x="120" y="1522" font-size="13" fill="#334155">When the trigger is inactive for cooldownPeriod, keda-operator patches demo-app's replicas</text>
+  <text x="120" y="1542" font-size="13" fill="#334155">straight to 0 itself — bypassing the HPA entirely, since an HPA can't act with zero pods</text>
+  <text x="120" y="1562" font-size="13" fill="#334155">(no pods means no metrics to read). It reverses the patch (0 → 1) the moment the trigger</text>
+  <text x="120" y="1582" font-size="13" fill="#334155">goes active again, then hands control back to the HPA for all 1 → N scaling.</text>
+
+  <text x="40" y="1650" font-size="11" fill="#94A3B8">KEDA docs: keda.sh/docs/2.20/concepts · keda.sh/docs/2.20/scalers/prometheus</text>
+</svg>
