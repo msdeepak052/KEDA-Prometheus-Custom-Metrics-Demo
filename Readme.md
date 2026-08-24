@@ -40,6 +40,9 @@ of this demo.
 
 ## Architecture
 
+<img width="1660" height="948" alt="Arch_Keda" src="https://github.com/user-attachments/assets/0a34fc86-252b-4e9f-97a6-175da7f6ad81" />
+
+
 ```mermaid
 flowchart TD
     LG["load-generator<br/>(busybox Deployment)<br/><i>kubectl apply</i>"]
