@@ -42,6 +42,37 @@ cluster, and it's the companion to the
 
 <img width="1660" height="948" alt="Arch_Keda" src="https://github.com/user-attachments/assets/0a34fc86-252b-4e9f-97a6-175da7f6ad81" />
 
+```mermaid
+flowchart TD
+    LG["load-generator<br/>(busybox Deployment)<br/><i>kubectl apply</i>"]
+
+    subgraph demo["namespace: demo"]
+        APP["demo-app<br/>(Deployment + Service)<br/>exposes /metrics<br/>http_requests_total counter"]
+        SO["ScaledObject<br/><i>kubectl apply</i><br/>type: prometheus, threshold: 5"]
+        HPA["keda-hpa-demo-app-scaledobject<br/><i>auto-created by KEDA</i>"]
+    end
+
+    subgraph monitoring["namespace: monitoring"]
+        PROM["prometheus-server<br/><i>Helm release</i>"]
+    end
+
+    subgraph kedans["namespace: keda"]
+        OPERATOR["keda-operator<br/><i>Helm release</i><br/>watches ScaledObjects"]
+        SCALER["Prometheus scaler<br/><i>in-process module inside<br/>keda-operator, not its own Pod</i>"]
+        METRICS["keda-operator-metrics-apiserver<br/>serves external.metrics.k8s.io"]
+    end
+
+    LG -->|"GET /work"| APP
+    APP -->|"scraped every 15s<br/>prometheus.io/* annotations"| PROM
+    SO -.->|"defines the trigger"| OPERATOR
+    OPERATOR -->|"creates, on trigger 1"| SCALER
+    OPERATOR -->|"creates, once"| HPA
+    SCALER -->|"PromQL poll every 15s:<br/>sum(rate(http_requests_total[2m]))"| PROM
+    SCALER -->|"caches the result in"| OPERATOR
+    METRICS -->|"asks keda-operator over gRPC,<br/>serves external.metrics.k8s.io"| HPA
+    HPA -->|"scales replicas"| APP
+```
+
 Same reason as the Adapter demo for using a *rate* instead of the raw
 counter: `http_requests_total` only ever goes up, so if we scaled on that
 number directly, it would scale up forever and never come back down. The
