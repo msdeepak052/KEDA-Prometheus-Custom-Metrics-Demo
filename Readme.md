@@ -510,6 +510,9 @@ Give it a poll cycle (`pollingInterval: 15`) and then:
 kubectl describe scaledobject demo-app-scaledobject -n demo
 ```
 
+<img width="2551" height="1318" alt="image" src="https://github.com/user-attachments/assets/ee19cfd1-97d5-4e72-ae59-50b59e4e6cfe" />
+
+
 Look for `Condition Ready: True` and `Condition ScalingActive` — that
 second one tells you KEDA is successfully querying Prometheus.
 
