@@ -8,16 +8,6 @@ Metric:      HTTP requests/sec
 Goal:        Scale when requests > 100/sec
 ```
 
-![Image](https://images.openai.com/static-rsc-4/t-OfXbitsJotcRMWIEe0rYD9k9yp_XT6QdP6noIYbToswFfARPbfXFVb_6S5aCmQr7iCvilBd0vKdjXcM3m75PC43sS1i1H5fuhZzYu14HSuqDW4NKyLPbsU58LXt5mc1nMGuUnQwqysf_9SS_n4aaZ2VTFq6Pvf3RTUbpDBOlMdKYeiNeGW28cKw3JMJBnB?purpose=fullsize)
-
-![Image](https://images.openai.com/static-rsc-4/LfR_5ezbtXJ3ebEHtcdKC1d9F7m2u7o26ZG_CxIhvv53Mhk9aauDRGInbPECdf9dPUT8BKYdWn011XA-h8sBXYJ8TuipvH7__O8-J1bDiHLy-HOebqCJ_Da2CYx-dRvixvGrERZl9yxhr1WhLKYaROEZmCSjfUezdv68G0MAlh7u0b5GifxgaP0kXHqBqZ8z?purpose=fullsize)
-
-![Image](https://images.openai.com/static-rsc-4/IizrBIYBvdZ3_BK3ygANB8anrecfSEw6JJNJhavs_tfXoCR5uGAzmDnRi-BtctFZnYK6LanC6yRcLxzXxsk4DhU-dkNgIyWQh1FCHh1wEJevWdTmMBtB4ifS3XH8_LdrbQn7rE_7LNFUIwFz74MA2QUwHQT-EFPCrsr_lan6QRJa-TVIqCtG-bgC7T5GJy-w?purpose=fullsize)
-
-![Image](https://images.openai.com/static-rsc-4/UXzehnYzPmygZdBfYYJI6GHr6L2ri0x9ZEw3qmVpuVwK28nm_y5Skaig3aNHzFqX8FADwlMXXIn7Kob0OMqGbvl89NQNT3zDYEUBL9BIklpBnfHjBsT-LP5b4CQBRgXQzq-eQjLn26d15fTvJf0W-Y5B6lpL-C66yHN2H2jI3Lv-91ZZIOv5luGsuBM0ZNeP?purpose=fullsize)
-
-![Image](https://images.openai.com/static-rsc-4/McX_ZDfVtAyW6nkvJLFIJWzSCWO8lbksYyg1ojGID1EQ2X2bVpmVq2LaH2ceaiGqJ6K5IwrTDHVxFjmnK2cjJaoJNzTwMU3sVLfMea2VUi16Gj9Dhike5_hzRMynzddDw7K06IIZYwknpu5yFv2v6PbEYQfPyQ30AZMA-BRcoaSIVgsVbvOWMFMIrc-4NIbL?purpose=fullsize)
-
 ---
 
 ## 1. Application exposes metrics
